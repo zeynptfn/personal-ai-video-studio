@@ -7,7 +7,8 @@
     "deploymentEnabled": {
       "fix/hf-anonymous-diagnostics": false,
       "feat/hf-auth-free-quota-safety": false,
-      "feat/private-cloud-shorts": false
+      "feat/private-cloud-shorts": false,
+      "feat/cloud-run-render-worker": false
     }
   }
 }

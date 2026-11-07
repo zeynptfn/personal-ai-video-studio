@@ -37,9 +37,11 @@
     "electron:build:all": "vite build && electron-builder --mac --win --linux",
     "test:personal": "node tests/personalStudio.test.mjs",
     "test:browser": "playwright test",
-    "lint:personal": "eslint --config eslint.personal.config.mjs app/personal app/login app/api/personal components/personal lib/personal lib/server tests/personalStudio.test.mjs tests/hfQuotaSafety.test.mjs tests/browser playwright.config.mjs middleware.js worker tests/cloudStudio.test.mjs tests/cloudDatabase.test.mjs",
+    "lint:personal": "eslint --config eslint.personal.config.mjs app/personal app/login app/api/personal components/personal lib/personal lib/server tests/personalStudio.test.mjs tests/hfQuotaSafety.test.mjs tests/browser playwright.config.mjs middleware.js worker tests/cloudStudio.test.mjs tests/cloudDatabase.test.mjs tests/renderWorker.test.mjs tests/renderDatabase.test.mjs scripts/cloud-render-acceptance.mjs",
     "test:hf-safety": "node tests/hfQuotaSafety.test.mjs",
-    "test:cloud": "node tests/cloudStudio.test.mjs && node tests/cloudDatabase.test.mjs"
+    "test:cloud": "node tests/cloudStudio.test.mjs && node tests/cloudDatabase.test.mjs",
+    "test:render": "node tests/renderWorker.test.mjs && node tests/renderDatabase.test.mjs",
+    "test:render:reference": "node worker/test/reference.test.mjs"
   },
   "build": {
     "appId": "ai.generative.open",
@@ -123,6 +125,7 @@
     "@aws-sdk/client-s3": "^3.1164.0",
     "@aws-sdk/s3-request-presigner": "^3.1164.0",
     "@gradio/client": "^2.7.2",
+    "@vercel/oidc": "^4.0.7",
     "ai-agent": "file:./packages/Open-Poe-AI/packages/agents",
     "axios": "^1.7.0",
     "next": "^15.0.0",

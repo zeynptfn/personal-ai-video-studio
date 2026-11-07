@@ -1,10 +1,13 @@
+import { renderConfig } from '@/lib/server/cloud/renderConfig.mjs';
+import { cloudRunClient } from '@/lib/server/cloud/cloudRun.mjs';
+import { renderAction } from '@/lib/server/cloud/renderService.mjs';
 import { cookies } from 'next/headers';
 import { accessConfigured, verifySession, SESSION_COOKIE } from '@/lib/personal/access.mjs';
 import { cloudConfig } from '@/lib/server/cloud/config.mjs';
 import { createCloudStore } from '@/lib/server/cloud/supabase.mjs';
 import { cloudAction, CloudError } from '@/lib/server/cloud/service.mjs';
 export const runtime = 'nodejs';
-export const maxDuration = 30;
+export const maxDuration = 60;
 const headers = { 'Cache-Control': 'private, no-store', 'Referrer-Policy': 'no-referrer' };
 const json = (data, status = 200) => Response.json(data, { status, headers });
 async function authorized() { return accessConfigured() && await verifySession((await cookies()).get(SESSION_COOKIE)?.value, process.env.STUDIO_SESSION_SECRET); }
@@ -13,8 +16,12 @@ export async function GET() {
   const config = cloudConfig();
   if (!config) return json({ storageReady: false, renderEnabled: false, projects: [], assets: [], jobs: [], reason: 'CLOUD_STORAGE_NOT_CONFIGURED' });
   try {
-    const state = await createCloudStore(config).rpc('list');
-    return json({ ...state, storageReady: true, renderEnabled: false, reason: 'FREE_WORKER_NOT_VERIFIED' });
+    const store=createCloudStore(config);
+    let approved=false;
+    try { approved=(await store.renderRpc('status')).approvalReady===true; } catch { /* Older schema remains usable for storage. */ }
+    const state=await store.rpc('list');
+    const enabled=!!renderConfig()&&approved;
+    return json({ ...state, storageReady:true,renderEnabled:enabled,reason:enabled?'APPROVED_COST_RISK':'RENDER_COST_APPROVAL_REQUIRED' });
   } catch { return json({ error: 'Bulut depolamasına erişilemiyor. Özel kurulum ve süresi dolan ücretsiz plan onayını kontrol edin.', storageReady: false, renderEnabled: false }, 503); }
 }
 export async function POST(request) {
@@ -37,7 +44,8 @@ export async function POST(request) {
     let data;
     try { data = JSON.parse(await new Blob(chunks).text()); } catch { throw new CloudError('Geçersiz JSON.'); }
     const config = cloudConfig();
-    return json(await cloudAction(data, config ? createCloudStore(config) : null));
+    const store=config?createCloudStore(config):null, render=renderConfig();
+    return json(await cloudAction(data,store,value=>renderAction(value,store,render,render?cloudRunClient(render):null)));
   } catch (error) {
     if (error instanceof CloudError) return json({ error: error.message, renderEnabled: false }, error.status);
     // Validation/upstream errors never expose server credentials or signed URLs.

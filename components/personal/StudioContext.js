@@ -3,6 +3,7 @@ import { createContext, useContext, useEffect, useRef, useState } from 'react';
 import { storage, saveAsset } from '@/lib/personal/storage.mjs';
 import { ACTIVE_STATUSES, providerError } from '@/lib/personal/catalog.mjs';
 import { createVideoProvider } from '@/lib/personal/provider.mjs';
+import { cloudRequest } from '@/lib/personal/cloud/client.mjs';
 import { validateAsset } from '@/lib/personal/validation.mjs';
 
 const StudioContext = createContext(null);
@@ -96,7 +97,8 @@ export default function StudioContextProvider({ children }) {
   }
   async function keepVideo(job) {
     if (job.assetId) return job;
-    const response = await fetch(job.url, { signal: AbortSignal.timeout(90000) });
+    const url=job.cloudAssetId?(await cloudRequest({action:'read',id:job.cloudAssetId})).ticket.url:job.url;
+    const response = await fetch(url, { signal: AbortSignal.timeout(90000) });
     if (!response.ok) throw new Error('Video indirilemiyor. Geçici bağlantının süresi dolmuş olabilir.');
     if (Number(response.headers.get('content-length')) > 100 * 1024 * 1024) throw new Error('Video 100 MB sınırını aşıyor.');
     const blob = new Blob([await response.blob()], { type: 'video/mp4' });

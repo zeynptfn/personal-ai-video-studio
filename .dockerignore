@@ -1,0 +1,15 @@
+**
+!worker/
+!worker/render-contract.mjs
+!worker/output.mjs
+!worker/runtime/
+!worker/runtime/*.mjs
+!worker/test/
+!worker/test/*.mjs
+!lib/
+!lib/personal/
+!lib/personal/cloud/
+!lib/personal/cloud/timeline.mjs
+!lib/server/
+!lib/server/cloud/
+!lib/server/cloud/workerAuth.mjs

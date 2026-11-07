@@ -1,0 +1,43 @@
+# REVIEW ONLY. No deployment/execute command is run by the application or tests.
+# Replace every REPLACE value only after explicit approval of costs and resources.
+apiVersion: run.googleapis.com/v1
+kind: Job
+metadata:
+  name: studio-ffmpeg
+spec:
+  template:
+    spec:
+      taskCount: 1
+      parallelism: 1
+      template:
+        spec:
+          serviceAccountName: REPLACE_WORKER_IDENTITY
+          maxRetries: 0
+          timeoutSeconds: '660'
+          containers:
+            - name: worker
+              image: REPLACE_PRIVATE_IMAGE_AT_SHA256_DIGEST
+              resources:
+                limits:
+                  cpu: '1'
+                  memory: 2Gi
+              env:
+                - name: STUDIO_WORKER_EXECUTION_ENABLED
+                  value: 'false'
+                - name: STUDIO_COORDINATOR_ORIGIN
+                  value: https://personal-ai-video-studio-bice.vercel.app
+                - name: STUDIO_STORAGE_PROJECT_REF
+                  value: REPLACE_SUPABASE_PROJECT_REF
+                - name: STUDIO_RENDER_WORKER_SECRET
+                  valueFrom:
+                    secretKeyRef:
+                      name: REPLACE_REVIEWED_SECRET
+                      key: REPLACE_PINNED_VERSION
+              volumeMounts:
+                - name: scratch
+                  mountPath: /tmp
+          volumes:
+            - name: scratch
+              emptyDir:
+                medium: Memory
+                sizeLimit: 256Mi
