@@ -18,6 +18,6 @@ export default defineConfig({
     command: 'npm start -- --hostname 127.0.0.1 --port 3210',
     url: 'http://127.0.0.1:3210/login',
     reuseExistingServer: false,
-    env: { STUDIO_PASSWORD: process.env.STUDIO_TEST_PASSWORD, STUDIO_SESSION_SECRET: secret, ENABLE_PAID_APIS: 'false', HF_TOKEN: '' },
+    env: { STUDIO_PASSWORD: process.env.STUDIO_TEST_PASSWORD, STUDIO_SESSION_SECRET: secret, ENABLE_PAID_APIS: 'false', HF_TOKEN: '', STUDIO_CLOUD_STORAGE_ENABLED: 'false' },
   },
 });

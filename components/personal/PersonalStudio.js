@@ -11,6 +11,7 @@ import Characters from './Characters';
 import Scenes from './Scenes';
 import HistoryPanel from './HistoryPanel';
 import SettingsPanel from './SettingsPanel';
+import TimelinePanel from './TimelinePanel';
 
 function NavigationIcon({ name }) {
   const paths = {
@@ -19,6 +20,7 @@ function NavigationIcon({ name }) {
     characters: ['M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2', 'M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8', 'M20 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75'],
     scenes: ['m12 3 10 5-10 5L2 8z','m2 12 10 5 10-5','m2 16 10 5 10-5'],
     history: ['M3 11a9 9 0 1 1 2.5 7','M3 4v7h7','M12 7v5l3 2'],
+    shorts: ['M3 5h18v14H3z','M9 5v14M15 5v14','M3 10h18'],
     settings: ['M4 6h16M4 12h16M4 18h16','M8 3v6M16 9v6M10 15v6'],
   };
   return <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{paths[name].map((d,index)=><path key={index} d={d}/>)}</svg>;
@@ -40,7 +42,7 @@ export default function PersonalStudio() {
   const active=copy.navigation[requested]?requested:'dashboard';
   const studio=useStudio();const [menu,setMenu]=useState(false);
   const pending=studio.jobs.filter(job=>ACTIVE_STATUSES.includes(job.status));
-  const panels={dashboard:<Dashboard/>,video:<VideoPanel/>,characters:<Characters/>,scenes:<Scenes/>,history:<HistoryPanel/>,settings:<SettingsPanel/>};
+  const panels={dashboard:<Dashboard/>,video:<VideoPanel/>,characters:<Characters/>,scenes:<Scenes/>,history:<HistoryPanel/>,settings:<SettingsPanel/>,shorts:<TimelinePanel/>};
   return <div className="ps-shell"><aside className={`ps-sidebar ${menu?'open':''}`}><Link href="/personal" className="ps-brand"><span className="ps-brand-mark">K</span><div>{copy.brand}<small>{copy.subtitle}</small></div></Link>
     <span className="ps-nav-heading">ÇALIŞMA ALANI</span><nav aria-label="Stüdyo gezinmesi">{Object.entries(copy.navigation).map(([id,label])=><Link key={id} href={path(id)} className={active===id?'active':''} onClick={()=>setMenu(false)} aria-current={active===id?'page':undefined}><span aria-hidden="true"><NavigationIcon name={id}/></span>{label}{id==='history'&&pending.length>0&&<b>{pending.length}</b>}</Link>)}</nav>
     <div className="ps-sidebar-bottom"><div className="ps-cloud-note"><span className="ps-live-dot"/><strong>Bulutta üretim</strong><p>Kişisel GPU gerekmez.<br/>Ücretsiz sağlayıcı kotası geçerlidir.</p></div><button className="ps-logout" onClick={async()=>{try{await fetch('/api/personal/session',{method:'DELETE'});window.location.assign('/login');}catch{studio.setNotice('Çıkış yapılamadı. Bağlantıyı kontrol edin.');}}}>↪ Oturumu kapat</button></div>
@@ -49,7 +51,7 @@ export default function PersonalStudio() {
       <main className="ps-content"><div className="ps-page-heading"><div><span className="ps-eyebrow">KARE / {active==='video'?'GÖRSELDEN VİDEOYA':'YARATICI ÇALIŞMA ALANI'}</span><h1>{copy.navigation[active]}</h1><p>{copy.descriptions[active]}</p></div><Link href="/personal/video" className="ps-button">＋ Yeni çekim</Link></div>
         {studio.notice&&<div className="ps-notice" role="alert"><p>{studio.notice}</p><button aria-label="Bildirimi kapat" onClick={()=>studio.setNotice('')}>×</button></div>}
         {!studio.ready?<div className="ps-card ps-empty" role="status">Tarayıcı arşivi açılıyor… {studio.notice&&<button className="ps-button" onClick={()=>window.location.reload()}>Yeniden dene</button>}</div>:panels[active]}
-      </main><footer className="ps-footer">Kişisel üretim alanınız · Dosyalar bu tarayıcıda saklanır · Ücretsiz erişim sağlayıcı kotasına bağlıdır.</footer>
+      </main><footer className="ps-footer">Kişisel üretim alanınız · Dosyalar bu tarayıcıda saklanır · Bulut yüklemesi açık onay gerektirir · Ücretsiz erişim sağlayıcı kotasına bağlıdır.</footer>
     </div>
   </div>;
 }
