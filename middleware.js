@@ -25,7 +25,7 @@ function addSecurityHeaders(response) {
 export async function middleware(request) {
     const url = request.nextUrl;
 
-    const publicPath = url.pathname === '/login' || url.pathname === '/api/personal/session';
+    const publicPath = url.pathname === '/login' || url.pathname === '/api/personal/session' || url.pathname === '/api/personal/cloud/worker';
     const protectedMode = process.env.NODE_ENV === 'production' || accessConfigured();
     if (!publicPath && protectedMode && (!accessConfigured() || !await verifySession(request.cookies.get(SESSION_COOKIE)?.value, process.env.STUDIO_SESSION_SECRET))) {
         if (url.pathname.startsWith('/api/')) return addSecurityHeaders(NextResponse.json({ error: 'Özel stüdyo oturumu gerekli.' }, { status: 401 }));

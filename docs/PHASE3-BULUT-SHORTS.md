@@ -1,5 +1,7 @@
 # Phase 3 — özel bulut Shorts mimarisi
 
+Sonraki worker uygulaması ve güncel onay kapıları için [Phase 3B](PHASE3B-CLOUD-RUN.md) belgesine bakın. Aşağıdaki notlar Phase 3 teslimini anlatır.
+
 İnceleme: 7 Kasım 2026. Bu PR **render hizmeti kurmaz, deploy yapmaz ve faturalandırma açmaz**. Gerçek bir cloud render veya yeni çıktı MP4 üretildiği iddia edilmez.
 
 ## Mimari kararı ve uygunluk

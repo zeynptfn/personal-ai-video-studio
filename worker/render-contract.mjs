@@ -1,5 +1,5 @@
-// NON-EXECUTING cloud worker contract. No child_process, FFmpeg runtime, URLs or
-// deployment entry point. A verified free worker is a prerequisite for execution.
+// Pure metadata plan, without processes or network access.
+// The separate runtime enforces approved cloud execution before running FFmpeg.
 import { validateTimeline, isUuid } from '../lib/personal/cloud/timeline.mjs';
 const fail = () => { throw new Error('Cloud FFprobe sonuçları veya dosya sahipliği doğrulanamadı.'); };
 export function planCloudRender(input, metadata, { ownerId, projectId } = {}) {
@@ -30,7 +30,7 @@ export function planCloudRender(input, metadata, { ownerId, projectId } = {}) {
     voice = { assetId:source.id,localFile:'voice.audio',trimStart:timeline.audio.trimStart,offset:timeline.audio.offset,volume:timeline.audio.volume,
       trimToTimeline:true,padToTimeline:true,sampleRate:48000,channels:2 };
   }
-  return { executable:false,reason:'FREE_WORKER_NOT_VERIFIED',clips,voice,concatOrder:clips.map(clip=>clip.assetId),
+  return { executable:false,reason:'PLAN_ONLY',clips,voice,concatOrder:clips.map(clip=>clip.assetId),
     output:{filename:'output.mp4',width,height,duration:totalDuration,videoCodec:'libx264',audioCodec:'aac',fps:24,faststart:true,maxBytes:20*1024*1024},
     sandbox:{concurrency:1,threads:2,wallSeconds:600,tempBytes:256*1024*1024,protocols:['file','pipe'],networkDuringEncoding:false} };
 }

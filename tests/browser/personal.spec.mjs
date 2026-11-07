@@ -211,3 +211,51 @@ test('Shorts timeline edits two saved clips and voice metadata without encoding 
   await page.screenshot({path:'work/browser-results/shorts-mobile.png',fullPage:true});
   expect(storageRequests).toEqual([]);expect(errors).toEqual([]);
 });
+
+test('worker endpoint rejects browser sessions and forged callbacks',async({page,request})=>{
+  expect((await request.post('/api/personal/cloud/worker',{data:{action:'claim'}})).status()).toBe(401);
+  await login(page);
+  expect((await page.request.post('/api/personal/cloud/worker',{headers:{'X-Studio-Signature':'a'.repeat(64)},data:{action:'complete'}})).status()).toBe(401);
+});
+
+test('fixture cloud cancellation remains requested until a confirmed terminal status is read',async({page})=>{
+  await login(page);
+  const projectId='70000000-0000-4000-8000-000000000091',jobId='70000000-0000-4000-8000-000000000092';
+  let status='rendering';
+  const manifest={schemaVersion:1,title:'Cloud status fixture',characterId:'',clips:[],audio:null,output:'preview'};
+  await page.route('**/api/personal/cloud',async route=>{
+    if(route.request().method()==='POST'){expect(route.request().postDataJSON().action).toBe('cancel-render');return route.fulfill({json:{cancelRequested:true,message:'İptal istendi. Worker durması henüz doğrulanmadı.'}});}
+    return route.fulfill({json:{storageReady:true,renderEnabled:false,projects:[{id:projectId,revision:1,manifest}],assets:[],jobs:[{id:jobId,project_id:projectId,status,progress:0.45,phase:'encoding'}]}});
+  });
+  await page.goto('/personal/shorts');await page.getByLabel('Kayıtlı Short',{exact:true}).selectOption(projectId);
+  await expect(page.getByRole('progressbar')).toHaveAttribute('value','0.45');
+  await page.getByRole('button',{name:'Bulut işini iptal et',exact:true}).click();
+  await expect(page.getByRole('alert').filter({hasText:'İptal istendi'})).toBeVisible();
+  await expect(page.getByText('Bulutta işleniyor',{exact:true})).toBeVisible();
+  status='cancelled';await page.getByRole('button',{name:'Bulut durumunu yenile',exact:true}).click();
+  await expect(page.getByText('İptal edildi',{exact:true})).toBeVisible();
+  await expect(page.getByRole('button',{name:'Bulut işini iptal et',exact:true})).toHaveCount(0);
+});
+
+test('fixture completed cloud output is previewed and saved to history without persisting signed URLs',async({page})=>{
+  await login(page);
+  const projectId='71000000-0000-4000-8000-000000000091',jobId='71000000-0000-4000-8000-000000000092',outputId='71000000-0000-4000-8000-000000000093';
+  const signed='https://aaaaaaaaaaaaaaaaaaaa.storage.supabase.co/output.mp4?fixture-private-link=expires';
+  const mp4=await readFile(demoVideo);
+  await page.route('https://aaaaaaaaaaaaaaaaaaaa.storage.supabase.co/**',route=>route.fulfill({body:mp4,contentType:'video/mp4',headers:{'Content-Length':String(mp4.length)}}));
+  await page.route('**/api/personal/cloud',route=>{
+    if(route.request().method()==='POST'){expect(route.request().postDataJSON()).toEqual({action:'read',id:outputId});return route.fulfill({json:{ticket:{url:signed,expiresIn:120}}});}
+    return route.fulfill({json:{storageReady:true,renderEnabled:false,projects:[{id:projectId,revision:1,manifest:{schemaVersion:1,title:'Cloud completed fixture',characterId:'',clips:[],audio:null,output:'preview'}}],assets:[],jobs:[{id:jobId,project_id:projectId,status:'completed',progress:1,output_asset_id:outputId,updated_at:new Date().toISOString()}]}});
+  });
+  await page.goto('/personal/shorts');await page.getByLabel('Kayıtlı Short',{exact:true}).selectOption(projectId);
+  await expect(page.locator('video')).toBeVisible();await expect(page.getByText('Tamamlandı',{exact:true})).toBeVisible();
+  await page.goto('/personal/history');await expect(page.getByText(/Cloud Run FFmpeg/)).toBeVisible();
+  const downloaded=page.waitForEvent('download');await page.getByRole('button',{name:'MP4 indir ve sakla',exact:true}).click();
+  expect((await readFile(await (await downloaded).path())).subarray(4,8).toString()).toBe('ftyp');
+  await expect(page.getByText('Video bu tarayıcıya kaydedildi.',{exact:true})).toBeVisible();
+  const history=await page.evaluate(async()=>{
+    const db=await new Promise(resolve=>{const request=indexedDB.open('personal-cloud-studio',1);request.onsuccess=()=>resolve(request.result);});
+    const jobs=await new Promise(resolve=>{const request=db.transaction('jobs').objectStore('jobs').getAll();request.onsuccess=()=>resolve(request.result);});db.close();return jobs;
+  });
+  expect(JSON.stringify(history)).not.toContain('fixture-private-link');expect(history.find(job=>job.id===jobId).cloudAssetId).toBe(outputId);
+});

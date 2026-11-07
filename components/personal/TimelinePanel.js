@@ -32,6 +32,16 @@ export default function TimelinePanel() {
     return () => { alive = false; document.removeEventListener('visibilitychange',check); };
   }, []);
   const activeJob = cloud.jobs?.find(job => job.project_id === project?.id);
+  const completedOutput=activeJob?.status==='completed'?activeJob.output_asset_id:null;
+  useEffect(() => {
+    if(!completedOutput || !project) return;
+    let alive=true;
+    cloudRequest({action:'read',id:completedOutput}).then(({ticket})=>{if(alive)setPreview(ticket.url);}).catch(()=>{if(alive)setMessage('Tamamlanan çıktı bağlantısı alınamadı; yeniden açın.');});
+    if(!studio.jobs.some(item=>item.id===activeJob.id)) studio.put('jobs',{id:activeJob.id,createdAt:Date.parse(activeJob.updated_at),status:'completed',origin:'cloud-render',providerId:'cloud-run',cloudAssetId:completedOutput,cloudProjectId:project.id,characterId:project.manifest.characterId,sceneId:project.manifest.clips[0]?.sceneId || '',sceneIds:project.manifest.clips.map(clip=>clip.sceneId).filter(Boolean),prompt:project.manifest.title}).catch(()=>{if(alive)setMessage('Cloud çıktı hazır; bu tarayıcının geçmişine kaydedilemedi.');});
+    return ()=>{alive=false;};
+  // Read URLs remain only in component memory, never in persisted history.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[completedOutput]);
   const hasActiveJob = cloud.jobs?.some(job => ['queued','rendering'].includes(job.status));
   useEffect(() => {
     if (!hasActiveJob) return;
@@ -45,7 +55,7 @@ export default function TimelinePanel() {
   }
   async function run(label, operation) {
     setBusy(label); setMessage('');
-    try { await operation(); } catch (error) { setMessage(error.message); } finally { setBusy(''); }
+    try { await operation(); } catch (error) { setMessage(error.message); await refresh(); } finally { setBusy(''); }
   }
   function edit(key,value) { setProject(previous => ({ ...previous,manifest: { ...previous.manifest,[key]: value } })); }
   function editClip(id,key,value) { edit('clips',project.manifest.clips.map(clip => clip.id === id ? { ...clip,[key]: value } : clip)); }
@@ -87,8 +97,8 @@ export default function TimelinePanel() {
   return <div className="ps-stack">
     <section className="ps-card ps-stack" aria-label="Bulut hazırlığı"><h2>Shorts · Bulut zaman çizelgesi</h2>
       <p>Kesme, sıralama ve ses ayarları proje talimatlarıdır. Bu tarayıcı video veya ses işlemez. Yerel kaydet yalnızca bu cihazdaki taslağı saklar.</p>
-      <p role="status">{cloud.storageReady ? 'Özel bulut depolaması hazır.' : 'Özel bulut depolaması yapılandırılmadı veya erişilemiyor.'} Ücretsiz ve ücretlendirmeye kapalı bir worker doğrulanmadığı için render kapalı.</p>
-      <p className="ps-muted">Yükleme açık onay gerektirir. Yükleme tamamlanana kadar sekme açık kalmalı. Bu sürümde bulut render başlatılmaz; tarayıcıyı kapatınca süren bir render vaat edilmez.</p>
+      <p role="status">{cloud.storageReady ? 'Özel bulut depolaması hazır.' : 'Özel bulut depolaması yapılandırılmadı veya erişilemiyor.'} {cloud.renderEnabled ? 'Cloud Run için süreli maliyet onayı var; ücretsiz çalışma garanti edilmez.' : 'Cloud Run render kapalı; kullanıcı maliyet onayı ve worker kurulumu gerekli.'}</p>
+      <p className="ps-muted">Yükleme açık onay gerektirir. Yükleme tamamlanana kadar sekme açık kalmalı. Onaylı Cloud Run işi başladıktan sonra tarayıcı kapalıyken devam eder. Render kapalıysa iş gönderilmez.</p>
       <div className="ps-actions"><button className="ps-button" disabled={!!busy} onClick={() => run('yenile',refresh)}>Bulut durumunu yenile</button><button className="ps-button" disabled={!!busy} onClick={() => run('yeni',async() => { await persist(project); selectProject(createProject()); })}>Yeni Short</button></div>
       {!!availableProjects.length && <Field label="Kayıtlı Short"><select value={project.id} disabled={!!busy} onChange={event => run('aç',async() => { const next = availableProjects.find(item => item.id === event.target.value); if (next) { await persist(project); selectProject(next); } })}><option value={project.id}>{manifest.title}</option>{availableProjects.filter(item => item.id !== project.id).map(item => <option key={item.id} value={item.id}>{item.manifest.title}{item.revision ? ' · bulut kaydı' : ' · yerel'}</option>)}</select></Field>}
     </section>
@@ -124,11 +134,13 @@ export default function TimelinePanel() {
           <button className="ps-button" disabled={!cloud.storageReady} onClick={() => run('kaydet',async() => { await saveRemote(); await refresh(); setMessage('Proje talimatları bulutta kaydedildi. Medya otomatik yüklenmedi.'); })}>Proje talimatlarını buluta kaydet</button></div>
         <label className="ps-check"><input type="checkbox" checked={includeReferences} onChange={event => setIncludeReferences(event.target.checked)}/>Seçili karakterin ana görselini ve klip sahnelerinin referanslarını da yükle</label>
         <label className="ps-check"><input type="checkbox" checked={consent} onChange={event => setConsent(event.target.checked)}/>Yalnızca bu projede seçtiğim dosyaları özel buluta yüklemeyi onaylıyorum.</label>
-        <div className="ps-actions"><button className="ps-button" disabled={!cloud.storageReady || !consent} onClick={() => run('yükle',upload)}>Seçili dosyaları özel buluta yükle</button><button className="ps-button primary" disabled title="Ücretsiz cloud worker doğrulanmadı">Bulutta Render Al</button></div>
+        <div className="ps-actions"><button className="ps-button" disabled={!cloud.storageReady || !consent} onClick={() => run('yükle',upload)}>Seçili dosyaları özel buluta yükle</button><button className="ps-button primary" disabled={!cloud.renderEnabled || project.revision < 1} title="Cloud Run maliyet onayı gerekir; ücretsiz çalışma garanti edilmez" onClick={() => run('render',async() => { const saved=await saveRemote(); const result=await cloudRequest({action:'render',projectId:saved.id,revision:saved.revision}); setMessage(result.message); await refresh(); })}>Bulutta Render Al</button></div>
         <small>Dosya başına video/ses 20 MB, görsel 10 MB. Büyük dosyalar tarayıcıda sıkıştırılmaz. {busy && 'İşlem sürüyor…'}</small>
       </section>
     </fieldset>
     <section className="ps-card ps-stack"><h2>Buluttaki iş durumu</h2><p>{activeJob ? RENDER_LABELS[activeJob.status] || 'Durum doğrulanamadı' : 'Bu proje için bulutta kayıtlı iş yok.'}</p>
+      {activeJob?.status === 'rendering' && <><progress max="1" value={activeJob.progress || 0}/><small>{({downloading:'Dosyalar indiriliyor',encoding:'FFmpeg işliyor',uploading:'Çıktı yükleniyor',verifying:'Çıktı doğrulanıyor'})[activeJob.phase] || 'Worker çalışıyor'} · %{Math.round((activeJob.progress || 0)*100)}</small></>}
+      {activeJob && ['queued','rendering'].includes(activeJob.status) && <button className="ps-button danger" disabled={!!busy} onClick={() => run('iptal',async() => { const result=await cloudRequest({action:'cancel-render',jobId:activeJob.id}); setMessage(result.message); await refresh(); })}>Bulut işini iptal et</button>}
       {activeJob?.error_code && <p className="ps-error">İş başarısız. Yarım yüklemeyi yeniden denemek için projeyi açıkça kaydedip dosyaları tekrar seçin. Güvenli hata kodu: {activeJob.error_code}</p>}
       {!!cloud.assets?.filter(asset => asset.project_id === project.id).length && <ul className="ps-stack">{cloud.assets.filter(asset => asset.project_id === project.id).map(asset => <li key={asset.id}>{asset.kind} · {(asset.size/1024/1024).toFixed(2)} MB · {asset.state === 'ready' ? 'Yüklendi' : asset.state === 'failed' ? 'Yükleme onayı süresi doldu' : 'Yükleme bekleniyor'} <button className="ps-button" disabled={asset.state !== 'ready' || !!busy} onClick={() => run('indir',async() => { const { ticket } = await cloudRequest({action:'read',id:asset.id}); if (asset.kind === 'video') setPreview(ticket.url); else window.open(ticket.url,'_blank','noopener,noreferrer'); })}>{asset.kind === 'video' ? 'MP4 önizle / indir' : 'Özel dosyayı indir'}</button></li>)}</ul>}
       {preview && <><video src={preview} controls playsInline preload="metadata" className="ps-video"/><a className="ps-button" href={preview} target="_blank" rel="noreferrer">MP4 indir</a><small>Özel bağlantı 2 dakika geçerlidir. Süresi dolarsa yeniden açın.</small></>}

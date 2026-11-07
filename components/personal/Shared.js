@@ -2,6 +2,7 @@
 import { cloneElement, useEffect, useId, useState } from 'react';
 import { storage, saveAsset } from '@/lib/personal/storage.mjs';
 import { validateAsset } from '@/lib/personal/validation.mjs';
+import { cloudRequest } from '@/lib/personal/cloud/client.mjs';
 import { STATUS_TR } from '@/lib/personal/catalog.mjs';
 
 export function useAssetUrl(id, fallback = '') {
@@ -21,8 +22,12 @@ export function AssetImage({ id, alt = '', className = '' }) {
   return url ? <img src={url} alt={alt} className={className} /> : <div className={`ps-image-empty ${className}`}>Görsel yok</div>;
 }
 export function MediaPreview({ job }) {
-  const url = useAssetUrl(job?.assetId, job?.url);
-  return url ? <video key={url} src={url} controls playsInline preload="metadata" className="ps-video" /> : <div className="ps-preview-empty"><span>▷</span><h3>Hikâyeniz burada hareket kazanacak.</h3><p>Bir başlangıç karesi seçin ve ilk çekiminizi hazırlayın.</p></div>;
+  const localUrl = useAssetUrl(job?.assetId, job?.url);
+  const [cloudUrl,setCloudUrl]=useState('');
+  const [refresh,setRefresh]=useState(0);
+  useEffect(()=>{let alive=true;setCloudUrl('');if(job?.cloudAssetId&&!job?.assetId)cloudRequest({action:'read',id:job.cloudAssetId}).then(({ticket})=>{if(alive)setCloudUrl(ticket.url);}).catch(()=>{});return()=>{alive=false;};},[job?.cloudAssetId,job?.assetId,refresh]);
+  const url=localUrl||cloudUrl;
+  return url ? <div><video key={url} src={url} controls playsInline preload="metadata" className="ps-video" />{job?.cloudAssetId&&!job?.assetId&&<button className="ps-button" onClick={()=>setRefresh(value=>value+1)}>Özel video bağlantısını yenile</button>}</div> : <div className="ps-preview-empty"><span>▷</span><h3>Hikâyeniz burada hareket kazanacak.</h3><p>Bir başlangıç karesi seçin ve ilk çekiminizi hazırlayın.</p></div>;
 }
 export function AudioPreview({ id }) {
   const url = useAssetUrl(id);
