@@ -5,7 +5,8 @@
   "buildCommand": "npm run build:packages && npm run build",
   "git": {
     "deploymentEnabled": {
-      "fix/hf-anonymous-diagnostics": false
+      "fix/hf-anonymous-diagnostics": false,
+      "feat/hf-auth-free-quota-safety": false
     }
   }
 }

@@ -37,7 +37,8 @@
     "electron:build:all": "vite build && electron-builder --mac --win --linux",
     "test:personal": "node tests/personalStudio.test.mjs",
     "test:browser": "playwright test",
-    "lint:personal": "eslint --config eslint.personal.config.mjs app/personal app/login app/api/personal components/personal lib/personal tests/personalStudio.test.mjs tests/browser playwright.config.mjs middleware.js"
+    "lint:personal": "eslint --config eslint.personal.config.mjs app/personal app/login app/api/personal components/personal lib/personal lib/server tests/personalStudio.test.mjs tests/hfQuotaSafety.test.mjs tests/browser playwright.config.mjs middleware.js",
+    "test:hf-safety": "node tests/hfQuotaSafety.test.mjs"
   },
   "build": {
     "appId": "ai.generative.open",

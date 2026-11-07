@@ -23,6 +23,8 @@ const image = 'docs/assets/generated_example.webp';
 
 test('private deployment redirects visitors and blocks paid proxies',async({page,request})=>{
   await page.goto('/personal');await expect(page).toHaveURL(/\/login$/);
+  expect((await request.get('/api/personal/huggingface/preflight')).status()).toBe(401);
+  expect((await request.post('/api/personal/huggingface/preflight')).status()).toBe(401);
   for (const path of ['/personal', '/personal/video', '/personal/characters', '/personal/scenes', '/personal/history', '/personal/settings']) {
     const response=await request.get(path,{maxRedirects:0});
     expect(response.status(), `Private page: ${path}`).toBe(307);
@@ -41,6 +43,11 @@ test('private deployment redirects visitors and blocks paid proxies',async({page
   const unauthenticated = await request.post('/api/personal/session', { headers: { Origin: 'https://example.invalid' }, data: { password: 'not-a-real-password' } });
   expect(unauthenticated.status()).toBe(403);
   await login(page);
+  const preflight=await page.request.get('/api/personal/huggingface/preflight');
+  expect(preflight.status()).toBe(200);
+  expect(await preflight.json()).toMatchObject({allowed:false,reason:'HF_TOKEN_NOT_CONFIGURED',authenticatedGenerationEnabled:false});
+  const submit=await page.request.post('/api/personal/huggingface/preflight',{data:{enable:true}});
+  expect(submit.status()).toBe(409);expect(await submit.json()).toMatchObject({allowed:false,authenticatedGenerationEnabled:false});
   for (const path of privatePaths) expect((await page.request.post(path,{data:{}})).status(), `Paid proxy blocked: ${path}`).toBe(403);
   const sessionCookie=(await page.context().cookies()).find(cookie=>cookie.name==='personal_studio_session');
   expect(sessionCookie.httpOnly).toBe(true);expect(sessionCookie.secure).toBe(true);expect(sessionCookie.sameSite).toBe('Strict');
