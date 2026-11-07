@@ -1,15 +1,9 @@
 import { test, expect } from '@playwright/test';
-import { mkdir, readFile } from 'node:fs/promises';
-import { execFileSync } from 'node:child_process';
+import { readFile } from 'node:fs/promises';
 
-// Synthetic test-only media is created in an ignored directory. No user media
-// or MP4 returned by a real generation is committed to this repository.
-const syntheticVideo = 'work/browser-fixtures/synthetic.mp4';
-test.beforeAll(async () => {
-  await mkdir('work/browser-fixtures', { recursive: true });
-  execFileSync('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-y', '-f', 'lavfi', '-i',
-    'color=c=black:s=64x64:r=8', '-t', '0.5', '-c:v', 'libx264', '-threads', '1', '-pix_fmt', 'yuv420p', syntheticVideo]);
-});
+// Reuse the existing upstream demo as playback/upload input. Tests never encode
+// or process video/audio, and this fixture is not proof of a cloud render.
+const demoVideo = 'docs/assets/demo.mp4';
 
 async function login(page) {
   await page.goto('/login');
@@ -25,7 +19,7 @@ test('private deployment redirects visitors and blocks paid proxies',async({page
   await page.goto('/personal');await expect(page).toHaveURL(/\/login$/);
   expect((await request.get('/api/personal/huggingface/preflight')).status()).toBe(401);
   expect((await request.post('/api/personal/huggingface/preflight')).status()).toBe(401);
-  for (const path of ['/personal', '/personal/video', '/personal/characters', '/personal/scenes', '/personal/history', '/personal/settings']) {
+  for (const path of ['/personal', '/personal/video', '/personal/characters', '/personal/scenes', '/personal/history', '/personal/settings', '/personal/shorts']) {
     const response=await request.get(path,{maxRedirects:0});
     expect(response.status(), `Private page: ${path}`).toBe(307);
     expect(new URL(response.headers().location).pathname).toBe('/login');
@@ -90,7 +84,7 @@ test('character, scene, audio and imported MP4 persist; manifest and download wo
   await expect(page.getByRole('button',{name:'Ücretsiz kotayla üret'})).toHaveCount(0);
   await expect(page.getByLabel('Hareket açıklaması',{exact:true})).toHaveValue(/quiet seaside/);
   await expect(page.locator('img[alt="Başlangıç karesi"]')).toBeVisible();
-  await page.getByLabel('MP4 içe aktar',{exact:true}).setInputFiles(syntheticVideo);
+  await page.getByLabel('MP4 içe aktar',{exact:true}).setInputFiles(demoVideo);
   await expect(page.getByText('İçe aktarıldı',{exact:true})).toBeVisible();
   await expect(page.locator('video')).toBeVisible();
   await expect.poll(()=>page.locator('video').evaluate(video=>video.readyState>=1 && video.duration>0)).toBe(true);
@@ -148,4 +142,72 @@ test('optional real browser LTX generation downloads an actual MP4',async({page}
   const downloaded=page.waitForEvent('download');await page.getByRole('button',{name:'MP4 indir ve sakla'}).click();
   const bytes=await readFile(await (await downloaded).path());expect(bytes.length).toBeGreaterThan(1000);expect(bytes.subarray(4,8).toString()).toBe('ftyp');
   await page.screenshot({path:'work/browser-results/live-ltx.png',fullPage:true});
+});
+
+
+test('cloud coordinator requires a session and origin; rendering stays blocked without free infrastructure',async({page,request})=>{
+  expect((await request.get('/api/personal/cloud')).status()).toBe(401);
+  expect((await request.post('/api/personal/cloud',{data:{action:'render'}})).status()).toBe(401);
+  await login(page);
+  const state=await page.request.get('/api/personal/cloud');
+  expect(state.status()).toBe(200);expect(await state.json()).toMatchObject({storageReady:false,renderEnabled:false,projects:[],jobs:[]});
+  expect((await page.request.post('/api/personal/cloud',{headers:{Origin:'https://example.invalid'},data:{action:'render'}})).status()).toBe(403);
+  const headers={Origin:'http://127.0.0.1:3210'};
+  const blocked=await page.request.post('/api/personal/cloud',{headers,data:{action:'render',enable:true,free:true}});
+  expect(blocked.status()).toBe(409);expect((await blocked.json()).renderEnabled).toBe(false);
+  expect((await page.request.post('/api/personal/cloud',{headers,data:{action:'save'}})).status()).toBe(503);
+  expect((await page.request.post('/api/personal/cloud',{headers,data:{action:'save',oversized:'x'.repeat(33000)}})).status()).toBe(413);
+});
+
+test('Shorts timeline edits two saved clips and voice metadata without encoding or silent uploads',async({page})=>{
+  const errors=[];page.on('pageerror',error=>errors.push(error.message));
+  const storageRequests=[];page.on('request',request=>{if(request.url().includes('.supabase.co'))storageRequests.push(request.url());});
+  await login(page);
+  await page.goto('/personal/video');
+  const mp4=await readFile(demoVideo);
+  await page.getByLabel('MP4 içe aktar',{exact:true}).setInputFiles({name:'clip-one.mp4',mimeType:'video/mp4',buffer:mp4});
+  await expect(page.getByText('İçe aktarıldı',{exact:true})).toBeVisible();
+  await page.getByLabel('MP4 içe aktar',{exact:true}).setInputFiles({name:'clip-two.mp4',mimeType:'video/mp4',buffer:mp4});
+  await expect(page.locator('video')).toBeVisible();
+  // Metadata fixtures use the existing IndexedDB stores. This does not process media.
+  await page.evaluate(async()=>{
+    const db=await new Promise(resolve=>{const req=indexedDB.open('personal-cloud-studio',1);req.onsuccess=()=>resolve(req.result);});
+    await new Promise((resolve,reject)=>{
+      const tx=db.transaction(['characters','scenes','assets'],'readwrite');
+      tx.objectStore('characters').put({id:'30000000-0000-4000-8000-000000000001',name:'Deniz Shorts'});
+      tx.objectStore('scenes').put({id:'30000000-0000-4000-8000-000000000002',title:'Short sahnesi'});
+      const bytes=new Uint8Array(46);const view=new DataView(bytes.buffer);const text=(at,value)=>{for(let i=0;i<value.length;i++)bytes[at+i]=value.charCodeAt(i);};
+      text(0,'RIFF');view.setUint32(4,38,true);text(8,'WAVEfmt ');view.setUint32(16,16,true);view.setUint16(20,1,true);view.setUint16(22,1,true);view.setUint32(24,8000,true);view.setUint32(28,16000,true);view.setUint16(32,2,true);view.setUint16(34,16,true);text(36,'data');view.setUint32(40,2,true);
+      tx.objectStore('assets').put({id:'30000000-0000-4000-8000-000000000003',name:'ElevenLabs voice.wav',type:'audio/wav',size:46,blob:new Blob([bytes],{type:'audio/wav'})});
+      tx.oncomplete=resolve;tx.onerror=reject;
+    });db.close();
+  });
+  await page.goto('/personal/shorts');
+  await expect(page.getByRole('heading',{name:'Shorts Zaman Çizelgesi',exact:true})).toBeVisible();
+  await page.getByLabel('Short adı',{exact:true}).fill('Deniz cloud Short');
+  await page.getByLabel('Short karakteri',{exact:true}).selectOption({label:'Deniz Shorts'});
+  await page.getByLabel('Kayıtlı klip',{exact:true}).selectOption({label:'clip-one.mp4'});await page.getByRole('button',{name:'Klibi ekle',exact:true}).click();
+  await page.getByLabel('Kayıtlı klip',{exact:true}).selectOption({label:'clip-two.mp4'});await page.getByRole('button',{name:'Klibi ekle',exact:true}).click();
+  await page.getByLabel('Klip 1 bitiş (sn)',{exact:true}).fill('2');
+  await page.getByLabel('Klip 1 sahne',{exact:true}).selectOption({label:'Short sahnesi'});
+  await page.getByRole('button',{name:'Klip 2 yukarı',exact:true}).click();
+  await expect(page.getByLabel('Klip 2 bitiş (sn)',{exact:true})).toHaveValue('2');
+  await page.getByLabel('Klip 1 sesini kapat',{exact:true}).check();
+  await page.getByLabel('ElevenLabs / kayıtlı ses',{exact:true}).selectOption({label:'ElevenLabs voice.wav'});
+  await page.getByLabel('Ses başlangıcı · zaman çizelgesi (sn)',{exact:true}).fill('0.5');
+  await page.getByRole('button',{name:'Taslağı yerel kaydet',exact:true}).click();
+  await expect(page.getByRole('alert').filter({hasText:'Buluta gönderilmedi'})).toBeVisible();
+  await expect(page.getByRole('button',{name:'Bulutta Render Al',exact:true})).toBeDisabled();
+  await expect(page.getByRole('button',{name:'Seçili dosyaları özel buluta yükle',exact:true})).toBeDisabled();
+  await expect(page.getByText('Bu proje için bulutta kayıtlı iş yok.',{exact:true})).toBeVisible();
+  await page.reload();await expect(page.getByLabel('Short adı',{exact:true})).toHaveValue('Deniz cloud Short');
+  await expect(page.getByLabel('Klip 1 sesini kapat',{exact:true})).toBeChecked();
+  await expect(page.getByLabel('Klip 2 sahne',{exact:true})).toHaveValue('30000000-0000-4000-8000-000000000002');
+  await expect(page.getByLabel('Ses başlangıcı · zaman çizelgesi (sn)',{exact:true})).toHaveValue('0.5');
+  await expect.poll(()=>page.locator('video').first().evaluate(video=>video.readyState>=1 && video.duration>0)).toBe(true);
+  await page.setViewportSize({width:390,height:844});
+  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+  await expect(page.getByRole('navigation',{name:'Stüdyo gezinmesi'})).not.toBeInViewport();
+  await page.screenshot({path:'work/browser-results/shorts-mobile.png',fullPage:true});
+  expect(storageRequests).toEqual([]);expect(errors).toEqual([]);
 });
